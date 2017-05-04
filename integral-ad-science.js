@@ -234,7 +234,7 @@ window.headertag.partnerScopes.push(function() {
         var yourBidder = new Partner(config);
         window.headertag[PARTNER_ID] = {};
         window.headertag[PARTNER_ID].callback = yourBidder.responseCallback;
-        window.headertag[PARTNER_ID].render = yourBidder.renderAd;
+        window.headertag.IntegralAdScienceHtb.render = yourBidder.renderAd;
 
         callback(null, yourBidder);
     }
