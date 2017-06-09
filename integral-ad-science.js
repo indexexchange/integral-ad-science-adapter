@@ -72,6 +72,7 @@ window.headertag.partnerScopes.push(function() {
             err.push('targetingType either not provided or invalid.');
         }
 
+
         /* =============================================================================
          * SECTION B | Validate Module-Specific Configurations
          * -----------------------------------------------------------------------------
@@ -263,10 +264,16 @@ window.headertag.partnerScopes.push(function() {
          * pmidKey: ix_(PARTNER ID)_dealid
          */
         var __targetingKeys = {
-            omKey: 'ix_ias_cpm',
-            pmKey: 'ix_ias_cpm',
-            idKey: 'ix_ias_id',
-            pmidKey: 'ix_ias_dealid'
+            /* Brand safety keywords */
+            adt: 'adt',
+            alc: 'alc',
+            dlm: 'dlm',
+            drg: 'drg',
+            hat: 'hat',
+            off: 'off',
+            vio: 'vio',
+            /* Viewability keywords */
+            vw: 'vw'
         };
 
         if (config.targetKeyOverride) {
@@ -352,6 +359,37 @@ window.headertag.partnerScopes.push(function() {
             return __supportedOptions;
         };
 
+        function buildQueryString(keyValueObj, intraParamDelimiter) {
+            var result = '';
+            if (keyValueObj) {
+                result = Object.keys(keyValueObj).reduce(function(list, key) {
+                    list.push([key, keyValueObj[key]].join(intraParamDelimiter));
+                    return list;
+                }, []).join('&');
+            }
+            return result;
+        }
+
+        function getSlotQueryString(gSlot) {
+            var slotKeyValuePairs, slotProps = {};
+            slotProps.id = gSlot.getSlotElementId();
+            slotProps.s = [gSlot.getSizes()[0].getWidth(), gSlot.getSizes()[0].getHeight()].join('.');
+            slotProps.p = gSlot.getAdUnitPath();
+
+            slotKeyValuePairs = Object.keys(slotProps).map(function(propName) {
+                return [propName, slotProps[propName]].join(':');
+            });
+            return '{' + slotKeyValuePairs.join(',') + '}';
+        }
+
+        function getWindowSize() {
+            return [Utils.getViewportWidth(), Utils.getViewportHeight()];
+        }
+
+        function getScreenSize() {
+            return [window.screen.width, window.screen.height];
+        }
+
         function __requestDemandForSlots(htSlotNames, callback){
 
             /* =============================================================================
@@ -389,7 +427,79 @@ window.headertag.partnerScopes.push(function() {
              *     }
              */
 
-            /* PUT CODE HERE */
+            var Utils = window.headertag.Utils,
+                Network = window.headertag.Network,
+                gSlots = Utils.getGSlots(),
+                queryStringList = [],
+                config = window.headertagconfig.partners[PARTNER_ID],
+                qsString,
+                IAS_HOST = '//pixel.adsafeprotected.com/services/pub';
+
+
+            queryStringList.push(['anId', config.anId]);
+
+            queryStringList = queryStringList.concat(gSlots.reduce(function(qsList, slot) {
+                qsList.push(['slot', getSlotQueryString(slot)]);
+                return qsList;
+            }, []));
+
+            queryStringList.push(['wr', getWindowSize().join('.')]);
+            queryStringList.push(['sr', getScreenSize().join('.')]);
+
+            qsString = queryStringList.map(function(qs) {
+                return qs.join('=');
+            }).join('&');
+
+            function getPageLevelKeywordObj(response) {
+                var result = {},
+                    brandSafetyObj = response.brandSafety;
+
+                Object.keys(brandSafetyObj).forEach(function(key) {
+                    result[key] = brandSafetyObj[key];
+                });
+                result.fr = response.fr;
+                return result;
+            }
+
+            function getSlotLevelKeywordObj(response, slotId) {
+                var slotObj = response.slots[slotId];
+                return Object.keys(slotObj).reduce(function(dest, key) {
+                    dest[key] = slotObj[key];
+                    return dest;
+                }, {});
+            }
+
+            function buildDemand(htSlotNames, response, mapping) {
+                var result = {};
+                htSlotNames.forEach(function(htSlotName) {
+                    var gSlotId = mapping[htSlotName][0],
+                        slotKeywordsCopy = getSlotLevelKeywordObj(response, gSlotId),
+                        slotDemand = getPageLevelKeywordObj(response);
+
+                    Object.keys(slotKeywordsCopy).forEach(function(key) {
+                        slotDemand[key] = slotKeywordsCopy[key];
+                    });
+                    result[htSlotName] = {
+                        demand: slotDemand
+                    };
+                });
+                return result;
+            }
+
+            Network.ajax({
+                url: [IAS_HOST, qsString].join('?'),
+                method: 'GET',
+                partnerId: PARTNER_ID,
+                onSuccess: function(jsonResponse) {
+                    var parsed = JSON.parse(jsonResponse);
+                    // demandKeywords = buildDemand(htSlotNames, parsed, config.mapping);
+                    callback(null, buildDemand(htSlotNames, parsed, config.mapping));
+                },
+                onFailure: function(e) {
+                }
+            });
+
+
 
             /* -------------------------------------------------------------------------- */
 
@@ -397,6 +507,7 @@ window.headertag.partnerScopes.push(function() {
 
         this.getDemand = function getDemand(correlator, slots, callback) {
             var htSlotNames = Utils.getDivIds(slots);
+            var demand = { slot: {}};
 
             __requestDemandForSlots(htSlotNames, function(err, demandForSlots){
                 if (err) {
@@ -416,6 +527,7 @@ window.headertag.partnerScopes.push(function() {
                     demand.slot[htSlotName] = demandForSlots[htSlotName];
                     demand.slot[htSlotName].timestamp = Utils.now();
                 }
+                // debugger;
                 callback(null, demand);
             });
         };
@@ -429,7 +541,6 @@ window.headertag.partnerScopes.push(function() {
              * Store creatives and demand in global objects as needed for processing.
              */
 
-            /* PUT CODE HERE */
 
             /* -------------------------------------------------------------------------- */
         };
