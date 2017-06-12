@@ -72,7 +72,6 @@ window.headertag.partnerScopes.push(function() {
             err.push('targetingType either not provided or invalid.');
         }
 
-
         /* =============================================================================
          * SECTION B | Validate Module-Specific Configurations
          * -----------------------------------------------------------------------------
@@ -272,6 +271,8 @@ window.headertag.partnerScopes.push(function() {
             hat: 'hat',
             off: 'off',
             vio: 'vio',
+            /* Fraud keywords */
+            fr: 'fr',
             /* Viewability keywords */
             vw: 'vw'
         };
@@ -492,7 +493,6 @@ window.headertag.partnerScopes.push(function() {
                 partnerId: PARTNER_ID,
                 onSuccess: function(jsonResponse) {
                     var parsed = JSON.parse(jsonResponse);
-                    // demandKeywords = buildDemand(htSlotNames, parsed, config.mapping);
                     callback(null, buildDemand(htSlotNames, parsed, config.mapping));
                 },
                 onFailure: function(e) {
@@ -527,7 +527,6 @@ window.headertag.partnerScopes.push(function() {
                     demand.slot[htSlotName] = demandForSlots[htSlotName];
                     demand.slot[htSlotName].timestamp = Utils.now();
                 }
-                // debugger;
                 callback(null, demand);
             });
         };
@@ -541,6 +540,7 @@ window.headertag.partnerScopes.push(function() {
              * Store creatives and demand in global objects as needed for processing.
              */
 
+            /* PUT CODE HERE */
 
             /* -------------------------------------------------------------------------- */
         };
