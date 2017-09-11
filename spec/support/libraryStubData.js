@@ -22,6 +22,18 @@ var libraryStubData = {
         },
         getLanguage: function () {
             return 'en-US';
+        },
+        getScreenHeight: function() {
+            return '300';
+        },
+        getScreenWidth: function() {
+            return '250';
+        },
+        getViewportHeight: function() {
+            return '640';
+        },
+        getViewportWidth: function() {
+            return '1024';
         }
     },
     'classify.js': {
@@ -74,7 +86,11 @@ var libraryStubData = {
             return adm;
         },
     },
-    'utilities.js': {},
+    'utilities.js': {
+        isArray: function(obj) {
+            return obj && obj instanceof Array;
+        }
+    },
     'whoopsie.js': function () {
         return null;
     },
