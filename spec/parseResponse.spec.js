@@ -29,23 +29,26 @@ function generateReturnParcels(profile, partnerConfig) {
     var returnParcels = [];
 
     for (var htSlotName in partnerConfig.mapping) {
-        if (partnerConfig.mapping.hasOwnProperty(htSlotName)) {
-            var xSlotsArray = partnerConfig.mapping[htSlotName];
-            for (var i = 0; i < xSlotsArray.length; i++) {
-                var xSlotName = xSlotsArray[i];
-                returnParcels.push({
-                    partnerId: profile.partnerId,
-                    htSlot: {
-                        getId: function () {
-                            return htSlotName
-                        }
-                    },
-                    ref: "",
-                    xSlotRef: partnerConfig.xSlots[xSlotName],
-                    requestId: '_' + Date.now()
-                });
+        (function(htSlotName) {
+            if (partnerConfig.mapping.hasOwnProperty(htSlotName)) {
+                var xSlotsArray = partnerConfig.mapping[htSlotName];
+                for (var i = 0; i < xSlotsArray.length; i++) {
+                    var xSlotName = xSlotsArray[i];
+                    returnParcels.push({
+                        partnerId: profile.partnerId,
+                        htSlot: {
+                            getId: function() {
+                                return htSlotName;
+                            }
+
+                        },
+                        ref: "",
+                        xSlotRef: partnerConfig.xSlots[xSlotName],
+                        requestId: '_' + Date.now()
+                    });
+                }
             }
-        }
+        })(htSlotName);
     }
 
     return returnParcels;
@@ -74,7 +77,7 @@ describe('parseResponse', function () {
     /* Generate dummy return parcels based on MRA partner profile */
     var returnParcels;
 
-    describe('should correctly parse bids:', function () {
+    describe('should correctly parse targeting keywords:', function () {
         var returnParcels1 = generateReturnParcels(partnerModule.profile, partnerConfig);
 
         /* ---------- MODIFY THIS TO MATCH YOUR AD RESPONSE FORMAT ---------------*/
@@ -106,7 +109,32 @@ describe('parseResponse', function () {
          * For SRA, this could be mulitple items, for MRA it will always be a single item.
          */
 
-        var adResponseMock1 = []
+        var adResponseMock1 = {
+            "brandSafety": {
+                "adt": "veryLow",
+                "dlm": "low",
+                "drg": "veryLow",
+                "alc": "high",
+                "hat": "veryLow",
+                "vio": "veryLow",
+                "off": "veryLow"
+            },
+            "fr": false,
+            "slots": {
+                "htSlot1": {
+                    "vw": ["40","50","60","70"],
+                    "id": "5848565c-4dd4-11e6-9f0b-0025904ea2be"
+                },
+                "htSlot2": {
+                    "vw": ["40","50","60"],
+                    "id": "1248565c-4dd4-11e6-9f0b-0025904ea2bf"
+                },
+                "htSlot3": {
+                    "vw": ["40","50"],
+                    "id": "6648565c-4dd4-11e6-9f0b-0025904ea2bg"
+                }
+            }
+        };
         /* ------------------------------------------------------------------------*/
 
         /* IF SRA, parse all parcels at once */
@@ -130,36 +158,35 @@ describe('parseResponse', function () {
                             type: 'object',
                             properties: {
                                 [partnerModule.profile.targetingKeys.id]: {
-                                    type: 'array',
-                                    exactLength: 1,
-                                    items: {
-                                        type: 'string',
-                                        minLength: 1
-                                    }
-                                },
-                                [partnerModule.profile.targetingKeys.om]: {
-                                    type: 'array',
-                                    exactLength: 1,
-                                    items: {
-                                        type: 'string',
-                                        minLength: 1
-                                    }
-                                },
-                                pubKitAdId: {
                                     type: 'string',
+                                    exactLength: 36
+                                },
+                                [partnerModule.profile.targetingKeys.adt]: {
+                                    type: 'string'
+                                },
+                                [partnerModule.profile.targetingKeys.alc]: {
+                                    type: 'string'
+                                },
+                                [partnerModule.profile.targetingKeys.dlm]: {
+                                    type: 'string'
+                                },
+                                [partnerModule.profile.targetingKeys.hat]: {
+                                    type: 'string'
+                                },
+                                [partnerModule.profile.targetingKeys.off]: {
+                                    type: 'string'
+                                },
+                                [partnerModule.profile.targetingKeys.vio]: {
+                                    type: 'string'
+                                },
+                                [partnerModule.profile.targetingKeys.fr]: {
+                                    type: 'boolean'
+                                },
+                                [partnerModule.profile.targetingKeys.vw]: {
+                                    type: 'array',
                                     minLength: 1
                                 }
                             }
-                        },
-                        price: {
-                            type: 'number'
-                        },
-                        size: {
-                            type: 'array',
-                        },
-                        adm: {
-                            type: 'string',
-                            minLength: 1
                         }
                     }
                 }, returnParcels1[i]);
@@ -168,212 +195,38 @@ describe('parseResponse', function () {
             }
         });
 
-        /* ---------- ADD MORE TEST CASES TO TEST AGAINST REAL VALUES ------------*/
-        it('each parcel should have the correct values set', function () {
-            for (var i = 0; i < returnParcels1.length; i++) {
+        function responseValidator(response, parcel) {
+            var TARGETING_KEYWORD_PREFIX = 'ix_ias_';
+            return Object.keys(response).every(function(key) {
+                return parcel.targeting[TARGETING_KEYWORD_PREFIX + key] == response[key];
+            })
+        }
 
-                /* Add test cases to test against each of the parcel's set fields
-                 * to make sure the response was parsed correctly.
-                 *
-                 * The parcels have already been parsed and should contain all the
-                 * necessary demand.
-                 */
+        describe('each parcel should have different kinds of targeting keyword values set', function() {
+            it('each parcel should have the correct brand safety keyword values set', function () {
+                var currentParcel;
+                for (var i = 0; i < returnParcels1.length; i++) {
+                    currentParcel = returnParcels1[i];
+                    expect(responseValidator(adResponseMock1.brandSafety, currentParcel)).to.be.true;
 
-                expect(returnParcels1[i]).to.exist;
-            }
-        });
-        /* -----------------------------------------------------------------------*/
-    });
-
-    describe('should correctly parse passes: ', function () {
-        var returnParcels2 = generateReturnParcels(partnerModule.profile, partnerConfig);
-
-        /* ---------- MODIFY THIS TO MATCH YOUR AD RESPONSE FORMAT ---------------*/
-        /* This is your mock response data.
-         * Should contain an explicit pass in the response and set the pass field
-         * for each of the return parcels.
-         *
-         *  For example:
-         * [{
-         *     "placementId": "54321",
-         *     "sizes": [
-         *         [300, 250]
-         *     ],
-         *     "pass": true,
-         * },
-         * {
-         *     "placementId": "12345",
-         *     "sizes": [
-         *         [300, 600]
-         *     ],
-         *     "pass": true
-         * }]
-         *
-         * The response should contain the response for all of the parcels in the array.
-         * For SRA, this could be mulitple items, for MRA it will always be a single item.
-         */
-
-        var adResponseMock2 = [];
-        /* ------------------------------------------------------------------------*/
-
-        /* IF SRA, parse all parcels at once */
-        if (partnerProfile.architecture) partnerModule.parseResponse(1, adResponseMock2, returnParcels2);
-
-        it('each parcel should have the required fields set', function () {
-            for (var i = 0; i < returnParcels2.length; i++) {
-
-                /* IF MRA, parse one parcel at a time */
-                if (!partnerProfile.architecture) partnerModule.parseResponse(1, adResponseMock2, [returnParcels2[i]]);
-
-                var result = inspector.validate({
-                    type: 'object',
-                    properties: {
-                        pass: {
-                            type: 'boolean',
-                            eq: true,
-
-                        }
-                    }
-                }, returnParcels2[i]);
-
-                expect(result.valid, result.format()).to.be.true;
-            }
-        });
-
-        /* ---------- ADD MORE TEST CASES TO TEST AGAINST REAL VALUES ------------*/
-        it('each parcel should have the correct values set', function () {
-            for (var i = 0; i < returnParcels2.length; i++) {
-
-                /* Add test cases to test against each of the parcel's set fields
-                 * to make sure the response was parsed correctly.
-                 *
-                 * The parcels have already been parsed and should contain all the
-                 * necessary demand.
-                 */
-
-                expect(returnParcels2[i]).to.exist;
-            }
-        });
-        /* -----------------------------------------------------------------------*/
-    });
-
-    describe('should correctly parse deals: ', function () {
-        var returnParcels3 = generateReturnParcels(partnerModule.profile, partnerConfig);
-
-        /* ---------- MODIFY THIS TO MATCH YOUR AD RESPONSE FORMAT ---------------*/
-        /* This is your mock response data.
-         * Should contain an explicit deal id in the response and set the deal targeting key field
-         * for each of the return parcels.
-         *
-         *  For example:
-         * [{
-         *     "placementId": "54321",
-         *     "sizes": [
-         *         [300, 250]
-         *     ],
-         *     "pass": false,
-         *     "price": 2,
-         *     "adm": "<img src=''/>",
-         *     "dealId": 'megaDeal'
-         * },
-         * {
-         *     "placementId": "12345",
-         *     "sizes": [
-         *         [300, 600]
-         *     ],
-         *     "pass": false,
-         *     "price": 3,
-         *     "adm": "<img src=''/>",
-         *     "dealId": 'megaDeal'
-         * }]
-         *
-         * The response should contain the response for all of the parcels in the array.
-         * For SRA, this could be mulitple items, for MRA it will always be a single item.
-         */
-
-        var adResponseMock3 = [];
-        /* ------------------------------------------------------------------------*/
-
-        /* IF SRA, parse all parcels at once */
-        if (partnerProfile.architecture) partnerModule.parseResponse(1, adResponseMock3, returnParcels3);
-
-        /* Simple type checking on the returned objects, should always pass */
-        it('each parcel should have the required fields set', function () {
-            for (var i = 0; i < returnParcels3.length; i++) {
-
-                /* IF MRA, parse one parcel at a time */
-                if (!partnerProfile.architecture) partnerModule.parseResponse(1, adResponseMock3, [returnParcels3[i]]);
-
-                var result = inspector.validate({
-                    type: 'object',
-                    properties: {
-                        targetingType: {
-                            type: 'string',
-                            eq: 'slot'
-                        },
-                        targeting: {
-                            type: 'object',
-                            properties: {
-                                [partnerModule.profile.targetingKeys.id]: {
-                                    type: 'array',
-                                    exactLength: 1,
-                                    items: {
-                                        type: 'string',
-                                        minLength: 1
-                                    }
-                                },
-                                [partnerModule.profile.targetingKeys.om]: {
-                                    type: 'array',
-                                    exactLength: 1,
-                                    items: {
-                                        type: 'string',
-                                        minLength: 1
-                                    }
-                                },
-                                [partnerModule.profile.targetingKeys.pm]: {
-                                    type: 'array',
-                                    exactLength: 1,
-                                    items: {
-                                        type: 'string',
-                                        minLength: 1
-                                    }
-                                },
-                                pubKitAdId: {
-                                    type: 'string',
-                                    minLength: 1
-                                }
-                            }
-                        },
-                        price: {
-                            type: 'number'
-                        },
-                        size: {
-                            type: 'array',
-                        },
-                        adm: {
-                            type: 'string',
-                            minLength: 1
-                        },
-                    }
-                }, returnParcels3[i]);
-
-                expect(result.valid, result.format()).to.be.true;
-            }
-        });
-
-        /* ---------- ADD MORE TEST CASES TO TEST AGAINST REAL VALUES ------------*/
-        it('each parcel should have the correct values set', function () {
-            for (var i = 0; i < returnParcels3.length; i++) {
-
-                /* Add test cases to test against each of the parcel's set fields
-                 * to make sure the response was parsed correctly.
-                 *
-                 * The parcels have already been parsed and should contain all the
-                 * necessary demand.
-                 */
-
-                expect(returnParcels3[i]).to.exist;
-            }
+                }
+            });
+            it('each parcel should have the correct slot level keyword values set', function () {
+                var currentParcel, currentSlotId, currentSlotTargeting;
+                for (var i = 0; i < returnParcels1.length; i++) {
+                    currentParcel = returnParcels1[i];
+                    currentSlotId = currentParcel.htSlot.getId();
+                    currentSlotTargeting = adResponseMock1.slots[currentSlotId];
+                    expect(responseValidator(currentSlotTargeting, currentParcel)).to.be.true;
+                }
+            });
+            it('each parcel should have the correct fraud keyword values set', function () {
+                var currentParcel;
+                for (var i = 0; i < returnParcels1.length; i++) {
+                    currentParcel = returnParcels1[i];
+                    expect(adResponseMock1['fr'] === currentParcel.targeting['ix_ias_fr']).to.be.true;
+                }
+            });
         });
         /* -----------------------------------------------------------------------*/
     });

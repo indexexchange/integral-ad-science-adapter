@@ -89,7 +89,9 @@ function IntegralAdScienceNob(configs) {
      * @return {object}
      */
     function __generateRequestObj(returnParcels) {
-        var queryObj = {};
+        // IAS does not use queryObj; instead just appends query strings to url
+        var queryString;
+        var queryList = [];
         var baseUrl = Browser.getProtocol() + '';
         var callbackId = System.generateUniqueId();
 
@@ -150,12 +152,65 @@ function IntegralAdScienceNob(configs) {
          */
 
         /* PUT CODE HERE */
+        var IAS_HOST = 'pixel.adsafeprotected.com/services/pub';
+        baseUrl += IAS_HOST;
+
+        function stringifySlotSize(sizes) {
+            var stringifiedSizes;
+            if (Utilities.isArray(sizes)) {
+                stringifiedSizes = sizes.reduce(function(result, size) {
+                    result.push(size.join('.'));
+                    return result;
+                }, []);
+                stringifiedSizes = '[' + stringifiedSizes.join(',') + ']';
+            }
+            return stringifiedSizes;
+        }
+
+        function getSlotObj(parcel) {
+            return {
+                id: parcel.htSlot.getId(),
+                ss: stringifySlotSize(parcel.xSlotRef.sizes),
+                p: parcel.xSlotRef.adUnitPath
+            }
+        }
+
+        function stringifySlotObj(slotObj) {
+            var slotKeyValuePairs = Object.keys(slotObj).map(function(propName) {
+                return [propName, slotObj[propName]].join(':');
+            });
+            return '{' + slotKeyValuePairs.join(',') + '}';
+        }
+
+        function getWindowSize() {
+            return [Browser.getViewportWidth(), Browser.getViewportHeight()];
+        }
+
+        function getScreenSize() {
+            return [Browser.getScreenWidth(), Browser.getScreenHeight()];
+        }
+
+        // `pubId` is the same for all xSlots
+        queryList.push(['anId', returnParcels[0].xSlotRef.pubId]);
+        queryList = queryList.concat(returnParcels.reduce(function(qsList, parcel) {
+            qsList.push(['slot', stringifySlotObj(getSlotObj(parcel))]);
+            return qsList;
+        }, []));
+
+        queryList.push(['wr', getWindowSize().join('.')]);
+        queryList.push(['sr', getScreenSize().join('.')]);
+
+        queryString = queryList.map(function(qs) {
+            return qs.join('=');
+        }).join('&');
+
+        baseUrl += '?' +  queryString;
 
         /* -------------------------------------------------------------------------- */
 
         return {
             url: baseUrl,
-            data: queryObj,
+            data: {},
             callbackId: callbackId
         };
     }
@@ -233,7 +288,37 @@ function IntegralAdScienceNob(configs) {
 
         /* ---------- Proces adResponse and extract the bids into the bids array ------------*/
 
-        var bids = adResponse;
+        function getPageLevelKeywordObj(response) {
+            var result = {},
+              brandSafetyObj = response.brandSafety;
+
+            Object.keys(brandSafetyObj).forEach(function(key) {
+                result[key] = brandSafetyObj[key];
+            });
+            result.fr = response.fr;
+            return result;
+        }
+
+        function shallowMerge(dest, src) {
+            Object.keys(src).reduce(function(dest, srcKey) {
+                dest[srcKey] = src[srcKey];
+                return dest;
+            }, dest);
+        }
+
+        function parseIASResponseIntoBids(response) {
+            var result = Object.keys(response.slots).reduce(function(slotList, slotId) {
+                var slotObj = {};
+                shallowMerge(slotObj, response.slots[slotId]);
+                slotObj.slotId = slotId;
+                shallowMerge(slotObj, getPageLevelKeywordObj(response));
+                slotList.push(slotObj);
+                return slotList;
+            }, []);
+            return result;
+        }
+
+        var bids = parseIASResponseIntoBids(adResponse);
 
         /* --------------------------------------------------------------------------------- */
 
@@ -249,8 +334,9 @@ function IntegralAdScienceNob(configs) {
                  * is usually some sort of placements or inventory codes. Please replace the someCriteria
                  * key to a key that represents the placement in the configuration and in the bid responses.
                  */
+                var parcelHtSlotId = unusedReturnParcels[j].htSlot.getId();
 
-                if (unusedReturnParcels[j].someCriteria === bids[i].someCriteria) { // change this
+                if (parcelHtSlotId === bids[i].slotId) { // change this
                     curReturnParcel = unusedReturnParcels[j];
                     unusedReturnParcels.splice(j, 1);
                     break;
@@ -258,35 +344,6 @@ function IntegralAdScienceNob(configs) {
             }
 
             if (!curReturnParcel) {
-                continue;
-            }
-
-            /* ---------- Fill the bid variables with data from the bid response here. ------------*/
-
-            var bidPrice; // the bid price for the given slot
-            var bidWidth; // the width of the given slot
-            var bidHeight; // the height of the given slot
-            var bidCreative; // the creative/adm for the given slot that will be rendered if is the winner.
-            var bidDealId; // the dealId if applicable for this slot.
-            var bidIsPass; // true/false value for if the module returned a pass for this slot.
-
-            /* ---------------------------------------------------------------------------------------*/
-
-            if (bidIsPass) {
-                //? if (DEBUG) {
-                Scribe.info(__profile.partnerId + ' returned pass for { id: ' + adResponse.id + ' }.');
-                //? }
-                if (__profile.enabledAnalytics.requestTime) {
-                    EventsService.emit('hs_slot_pass', {
-                        sessionId: sessionId,
-                        statsId: __profile.statsId,
-                        htSlotId: curReturnParcel.htSlot.getId(),
-                        xSlotNames: [curReturnParcel.xSlotName]
-                    });
-                }
-
-                curReturnParcel.pass = true;
-
                 continue;
             }
 
@@ -299,62 +356,18 @@ function IntegralAdScienceNob(configs) {
                 });
             }
 
-            curReturnParcel.size = [bidWidth, bidHeight];
             curReturnParcel.targetingType = 'slot';
             curReturnParcel.targeting = {};
-
-            //? if (FEATURES.GPT_LINE_ITEMS) {
-            var targetingCpm = __bidTransformers.targeting.apply(bidPrice);
-            var sizeKey = Size.arrayToString(curReturnParcel.size);
-
-            if (bidDealId !== '') {
-                curReturnParcel.targeting[__baseClass._configs.targetingKeys.pmid] = [sizeKey + '_' + bidDealId];
-                curReturnParcel.targeting[__baseClass._configs.targetingKeys.pm] = [sizeKey + '_' + targetingCpm];
-            } else {
-                curReturnParcel.targeting[__baseClass._configs.targetingKeys.om] = [sizeKey + '_' + targetingCpm];
-            }
-            curReturnParcel.targeting[__baseClass._configs.targetingKeys.id] = [curReturnParcel.requestId];
-
-            if (__baseClass._configs.lineItemType === Constants.LineItemTypes.ID_AND_SIZE) {
-                RenderService.registerAdByIdAndSize(
-                    sessionId,
-                    __profile.partnerId,
-                    __render, [bidCreative],
-                    '',
-                    __profile.features.demandExpiry.enabled ? (__profile.features.demandExpiry.value + System.now()) : 0,
-                    curReturnParcel.requestId, [bidWidth, bidHeight]
-                );
-            } else if (__baseClass._configs.lineItemType === Constants.LineItemTypes.ID_AND_PRICE) {
-                RenderService.registerAdByIdAndPrice(
-                    sessionId,
-                    __profile.partnerId,
-                    __render, [bidCreative],
-                    '',
-                    __profile.features.demandExpiry.enabled ? (__profile.features.demandExpiry.value + System.now()) : 0,
-                    curReturnParcel.requestId,
-                    targetingCpm
-                );
-            }
-            //? }
-
-            //? if (FEATURES.RETURN_CREATIVE) {
-            curReturnParcel.adm = bidCreative;
-            //? }
-
-            //? if (FEATURES.RETURN_PRICE) {
-            curReturnParcel.price = Number(__bidTransformers.price.apply(bidPrice));
-            //? }
-
-            //? if (FEATURES.INTERNAL_RENDER) {
-            var pubKitAdId = RenderService.registerAd(
-                sessionId,
-                __profile.partnerId,
-                __render, [bidCreative],
-                '',
-                __profile.features.demandExpiry.enabled ? (__profile.features.demandExpiry.value + System.now()) : 0
-            );
-            curReturnParcel.targeting.pubKitAdId = pubKitAdId;
-            //? }
+            curReturnParcel.targeting[__baseClass._configs.targetingKeys.id] = bids[i].id;
+            curReturnParcel.targeting[__baseClass._configs.targetingKeys.adt] = bids[i].adt;
+            curReturnParcel.targeting[__baseClass._configs.targetingKeys.alc] = bids[i].alc;
+            curReturnParcel.targeting[__baseClass._configs.targetingKeys.dlm] = bids[i].dlm;
+            curReturnParcel.targeting[__baseClass._configs.targetingKeys.drg] = bids[i].drg;
+            curReturnParcel.targeting[__baseClass._configs.targetingKeys.hat] = bids[i].hat;
+            curReturnParcel.targeting[__baseClass._configs.targetingKeys.off] = bids[i].off;
+            curReturnParcel.targeting[__baseClass._configs.targetingKeys.vio] = bids[i].vio;
+            curReturnParcel.targeting[__baseClass._configs.targetingKeys.fr] = bids[i].fr;
+            curReturnParcel.targeting[__baseClass._configs.targetingKeys.vw] = bids[i].vw;
         }
 
     }
@@ -396,14 +409,23 @@ function IntegralAdScienceNob(configs) {
             },
             targetingKeys: { // Targeting keys for demand, should follow format ix_{statsId}_id
                 id: 'ix_ias_id',
-                om: 'ix_ias_cpm',
-                pm: 'ix_ias_cpm',
-                pmid: 'ix_ias_pmid'
+                /* Brand safety keywords */
+                adt: 'ix_ias_adt',
+                alc: 'ix_ias_alc',
+                dlm: 'ix_ias_dlm',
+                drg: 'ix_ias_drg',
+                hat: 'ix_ias_hat',
+                off: 'ix_ias_off',
+                vio: 'ix_ias_vio',
+                /* Fraud keywords */
+                fr: 'ix_ias_fr',
+                /* Viewability keywords */
+                vw: 'ix_ias_vw'
             },
             lineItemType: Constants.LineItemTypes.ID_AND_SIZE,
-            callbackType: Partner.CallbackTypes.ID, // Callback type, please refer to the readme for details
-            architecture: Partner.Architectures.SRA, // Request architecture, please refer to the readme for details
-            requestType: Partner.RequestTypes.ANY // Request type, jsonp, ajax, or any.
+            callbackType: Partner.CallbackTypes.NONE, // Callback type, please refer to the readme for details
+            architecture: Partner.Architectures.FSRA, // Request architecture, please refer to the readme for details
+            requestType: Partner.RequestTypes.AJAX // Request type, jsonp, ajax, or any.
         };
         /* ---------------------------------------------------------------------------------------*/
 
@@ -424,28 +446,7 @@ function IntegralAdScienceNob(configs) {
         /* - Please fill out this bid trasnformer according to your module's bid response format - */
         var bidTransformerConfigs = {
             //? if (FEATURES.GPT_LINE_ITEMS) {
-            targeting: {
-                inputCentsMultiplier: 1, // Input is in cents
-                outputCentsDivisor: 1, // Output as cents
-                outputPrecision: 0, // With 0 decimal places
-                roundingType: 'FLOOR', // jshint ignore:line
-                floor: 0,
-                buckets: [{
-                    max: 2000, // Up to 20 dollar (above 5 cents)
-                    step: 5 // use 5 cent increments
-                }, {
-                    max: 5000, // Up to 50 dollars (above 20 dollars)
-                    step: 100 // use 1 dollar increments
-                }]
-            },
-            //? }
-            //? if (FEATURES.RETURN_PRICE) {
-            price: {
-                inputCentsMultiplier: 1, // Input is in cents
-                outputCentsDivisor: 1, // Output as cents
-                outputPrecision: 0, // With 0 decimal places
-                roundingType: 'NONE',
-            },
+            // IAS does not need to transform bids
             //? }
         };
 

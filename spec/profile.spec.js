@@ -106,39 +106,99 @@ describe('Partner Profile', function () {
                                 }
                             }
                         },
-                        om: {
+                        adt: {
                             type: 'string',
                             exec: function (schema, post) {
                                 var targetingSplit = post.split('_');
 
                                 if (targetingSplit[0] !== 'ix' ||
                                     targetingSplit[1] !== profile.statsId.toLowerCase() ||
-                                    targetingSplit[2] !== 'cpm') {
-                                    this.report('om tageting key should be of the format ix_{statsId}_cpm')
+                                    targetingSplit[2] !== 'adt') {
+                                    this.report('om tageting key should be of the format ix_{statsId}_adt')
                                 }
                             }
                         },
-                        pm: {
+                        alc: {
                             type: 'string',
                             exec: function (schema, post) {
                                 var targetingSplit = post.split('_');
 
                                 if (targetingSplit[0] !== 'ix' ||
                                     targetingSplit[1] !== profile.statsId.toLowerCase() ||
-                                    targetingSplit[2] !== 'cpm') {
-                                    this.report('pm tageting key should be of the format ix_{statsId}_cpm')
+                                    targetingSplit[2] !== 'alc') {
+                                    this.report('pm tageting key should be of the format ix_{statsId}_alc')
                                 }
                             }
                         },
-                        pmid: {
+                        dlm: {
                             type: 'string',
                             exec: function (schema, post) {
                                 var targetingSplit = post.split('_');
 
                                 if (targetingSplit[0] !== 'ix' ||
                                     targetingSplit[1] !== profile.statsId.toLowerCase() ||
-                                    targetingSplit[2] !== 'dealid') {
-                                    this.report('pmid tageting key should be of the format ix_{statsId}_dealid')
+                                    targetingSplit[2] !== 'dlm') {
+                                    this.report('pmid tageting key should be of the format ix_{statsId}_dlm')
+                                }
+                            }
+                        },
+                        hat: {
+                            type: 'string',
+                            exec: function (schema, post) {
+                                var targetingSplit = post.split('_');
+
+                                if (targetingSplit[0] !== 'ix' ||
+                                  targetingSplit[1] !== profile.statsId.toLowerCase() ||
+                                  targetingSplit[2] !== 'hat') {
+                                    this.report('pmid tageting key should be of the format ix_{statsId}_hat')
+                                }
+                            }
+                        },
+                        off: {
+                            type: 'string',
+                            exec: function (schema, post) {
+                                var targetingSplit = post.split('_');
+
+                                if (targetingSplit[0] !== 'ix' ||
+                                  targetingSplit[1] !== profile.statsId.toLowerCase() ||
+                                  targetingSplit[2] !== 'off') {
+                                    this.report('pmid tageting key should be of the format ix_{statsId}_off')
+                                }
+                            }
+                        },
+                        vio: {
+                            type: 'string',
+                            exec: function (schema, post) {
+                                var targetingSplit = post.split('_');
+
+                                if (targetingSplit[0] !== 'ix' ||
+                                  targetingSplit[1] !== profile.statsId.toLowerCase() ||
+                                  targetingSplit[2] !== 'vio') {
+                                    this.report('pmid tageting key should be of the format ix_{statsId}_vio')
+                                }
+                            }
+                        },
+                        fr: {
+                            type: 'string',
+                            exec: function (schema, post) {
+                                var targetingSplit = post.split('_');
+
+                                if (targetingSplit[0] !== 'ix' ||
+                                  targetingSplit[1] !== profile.statsId.toLowerCase() ||
+                                  targetingSplit[2] !== 'fr') {
+                                    this.report('pmid tageting key should be of the format ix_{statsId}_fr')
+                                }
+                            }
+                        },
+                        vw: {
+                            type: 'string',
+                            exec: function (schema, post) {
+                                var targetingSplit = post.split('_');
+
+                                if (targetingSplit[0] !== 'ix' ||
+                                  targetingSplit[1] !== profile.statsId.toLowerCase() ||
+                                  targetingSplit[2] !== 'vw') {
+                                    this.report('pmid tageting key should be of the format ix_{statsId}_vw')
                                 }
                             }
                         }

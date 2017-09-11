@@ -35,19 +35,11 @@ var partnerValidator = function (configs) {
     var result = Inspector.validate({
         type: 'object',
         properties: {
+            pubId: {
+                type: 'integer'
+            },
             xSlots: {
-                type: 'object',
-                properties: {
-                    '*': {
-                        type: 'object',
-                        properties: {
-                            placementId: {
-                                type: 'string',
-                                minLength: 1
-                            }
-                        }
-                    }
-                }
+                type: 'object'
             }
         }
     }, configs);
