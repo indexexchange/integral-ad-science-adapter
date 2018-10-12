@@ -1,4 +1,4 @@
-# IntegralAdScience
+# Integral Ad Science
 ## General Compatibility
 |Feature|  |
 |---|---|
