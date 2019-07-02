@@ -199,6 +199,7 @@ function IntegralAdScienceNob(configs) {
 
         queryList.push(['wr', getWindowSize().join('.')]);
         queryList.push(['sr', getScreenSize().join('.')]);
+        queryList.push(['url', encodeURIComponent(window.location.href)]);
 
         queryString = queryList.map(function(qs) {
             return qs.join('=');
@@ -296,6 +297,7 @@ function IntegralAdScienceNob(configs) {
                 result[key] = brandSafetyObj[key];
             });
             result.fr = response.fr;
+            result.custom = response.custom;
             return result;
         }
 
