@@ -4,6 +4,7 @@
 // Dependencies ////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
+var BidTransformer = require('bid-transformer.js');
 var Browser = require('browser.js');
 var Classify = require('classify.js');
 var Constants = require('constants.js');
@@ -13,7 +14,7 @@ var SpaceCamp = require('space-camp.js');
 var System = require('system.js');
 var Network = require('network.js');
 var Utilities = require('utilities.js');
-
+var Whoopsie = require('whoopsie.js');
 var ComplianceService;
 var RenderService;
 
@@ -21,7 +22,6 @@ var RenderService;
 var ConfigValidators = require('config-validators.js');
 var PartnerSpecificValidator = require('integral-ad-science-nob-validator.js');
 var Scribe = require('scribe.js');
-var Whoopsie = require('whoopsie.js');
 //? }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -55,6 +55,13 @@ function IntegralAdScienceNob(configs) {
      */
     var __profile;
 
+    /**
+     * Instances of BidTransformer for transforming bids.
+     *
+     * @private {object}
+     */
+    var __bidTransformers;
+
     /* =====================================
      * Functions
      * ---------------------------------- */
@@ -71,6 +78,12 @@ function IntegralAdScienceNob(configs) {
      * @return {object}
      */
     function __generateRequestObj(returnParcels) {
+        // IAS does not use queryObj; instead just appends query strings to url
+        var queryString;
+        var queryList = [];
+        var baseUrl = Browser.getProtocol() + '';
+        var callbackId = System.generateUniqueId();
+
         /* =============================================================================
          * STEP 2  | Generate Request URL
          * -----------------------------------------------------------------------------
@@ -133,7 +146,59 @@ function IntegralAdScienceNob(configs) {
         var callbackId = System.generateUniqueId();
 
         /* Change this to your bidder endpoint. */
-        var baseUrl = Browser.getProtocol() + '//someAdapterEndpoint.com/bid';
+        var IAS_HOST = 'pixel.adsafeprotected.com/services/pub';
+        baseUrl += IAS_HOST;
+
+        function stringifySlotSize(sizes) {
+            var stringifiedSizes;
+            if (Utilities.isArray(sizes)) {
+                stringifiedSizes = sizes.reduce(function(result, size) {
+                    result.push(size.join('.'));
+                    return result;
+                }, []);
+                stringifiedSizes = '[' + stringifiedSizes.join(',') + ']';
+            }
+            return stringifiedSizes;
+        }
+
+        function getSlotObj(parcel) {
+            return {
+                id: parcel.htSlot.getId(),
+                ss: stringifySlotSize(parcel.xSlotRef.sizes),
+                p: parcel.xSlotRef.adUnitPath
+            }
+        }
+
+        function stringifySlotObj(slotObj) {
+            var slotKeyValuePairs = Object.keys(slotObj).map(function(propName) {
+                return [propName, slotObj[propName]].join(':');
+            });
+            return '{' + slotKeyValuePairs.join(',') + '}';
+        }
+
+        function getWindowSize() {
+            return [Browser.getViewportWidth(), Browser.getViewportHeight()];
+        }
+
+        function getScreenSize() {
+            return [Browser.getScreenWidth(), Browser.getScreenHeight()];
+        }
+
+        // `pubId` is the same for all xSlots
+        queryList.push(['anId', returnParcels[0].xSlotRef.pubId]);
+        queryList = queryList.concat(returnParcels.reduce(function(qsList, parcel) {
+            qsList.push(['slot', stringifySlotObj(getSlotObj(parcel))]);
+            return qsList;
+        }, []));
+
+        queryList.push(['wr', getWindowSize().join('.')]);
+        queryList.push(['sr', getScreenSize().join('.')]);
+
+        queryString = queryList.map(function(qs) {
+            return qs.join('=');
+        }).join('&');
+
+        baseUrl += '?' +  queryString;
 
         /* ------------------------ Get consent information -------------------------
          * If you want to implement GDPR consent in your adapter, use the function
@@ -230,6 +295,9 @@ function IntegralAdScienceNob(configs) {
      * attached to each one of the objects for which the demand was originally requested for.
      */
     function __parseResponse(sessionId, adResponse, returnParcels) {
+
+        var unusedReturnParcels = returnParcels.slice();
+
         /* =============================================================================
          * STEP 4  | Parse & store demand response
          * -----------------------------------------------------------------------------
@@ -250,9 +318,37 @@ function IntegralAdScienceNob(configs) {
          */
 
         /* ---------- Process adResponse and extract the bids into the bids array ------------ */
+        function getPageLevelKeywordObj(response) {
+            var result = {},
+              brandSafetyObj = response.brandSafety;
 
-        var bids = adResponse;
+            Object.keys(brandSafetyObj).forEach(function(key) {
+                result[key] = brandSafetyObj[key];
+            });
+            result.fr = response.fr;
+            return result;
+        }
 
+        function shallowMerge(dest, src) {
+            Object.keys(src).reduce(function(dest, srcKey) {
+                dest[srcKey] = src[srcKey];
+                return dest;
+            }, dest);
+        }
+
+        function parseIASResponseIntoBids(response) {
+            var result = Object.keys(response.slots).reduce(function(slotList, slotId) {
+                var slotObj = {};
+                shallowMerge(slotObj, response.slots[slotId]);
+                slotObj.slotId = slotId;
+                shallowMerge(slotObj, getPageLevelKeywordObj(response));
+                slotList.push(slotObj);
+                return slotList;
+            }, []);
+            return result;
+        }
+
+        var bids = parseIASResponseIntoBids(adResponse);
         /* --------------------------------------------------------------------------------- */
 
         for (var j = 0; j < returnParcels.length; j++) {
@@ -342,6 +438,16 @@ function IntegralAdScienceNob(configs) {
             curReturnParcel.size = bidSize;
             curReturnParcel.targetingType = 'slot';
             curReturnParcel.targeting = {};
+            curReturnParcel.targeting[__baseClass._configs.targetingKeys.id] = bids[i].id;
+            curReturnParcel.targeting[__baseClass._configs.targetingKeys.adt] = bids[i].adt;
+            curReturnParcel.targeting[__baseClass._configs.targetingKeys.alc] = bids[i].alc;
+            curReturnParcel.targeting[__baseClass._configs.targetingKeys.dlm] = bids[i].dlm;
+            curReturnParcel.targeting[__baseClass._configs.targetingKeys.drg] = bids[i].drg;
+            curReturnParcel.targeting[__baseClass._configs.targetingKeys.hat] = bids[i].hat;
+            curReturnParcel.targeting[__baseClass._configs.targetingKeys.off] = bids[i].off;
+            curReturnParcel.targeting[__baseClass._configs.targetingKeys.vio] = bids[i].vio;
+            curReturnParcel.targeting[__baseClass._configs.targetingKeys.fr] = bids[i].fr;
+            curReturnParcel.targeting[__baseClass._configs.targetingKeys.vw] = bids[i].vw;
 
             var targetingCpm = '';
 
@@ -416,7 +522,7 @@ function IntegralAdScienceNob(configs) {
             version: '2.0.0',
             targetingType: 'slot',
             enabledAnalytics: {
-                requestTime: false
+                requestTime: true
             },
             features: {
                 demandExpiry: {
@@ -432,17 +538,26 @@ function IntegralAdScienceNob(configs) {
             /* Targeting keys for demand, should follow format ix_{statsId}_id */
             targetingKeys: {
                 id: 'ix_ias_id',
-                om: 'ix_ias_cpm',
-                pm: 'ix_ias_cpm',
-                pmid: 'ix_ias_dealid'
+                /* Brand safety keywords */
+                adt: 'ix_ias_adt',
+                alc: 'ix_ias_alc',
+                dlm: 'ix_ias_dlm',
+                drg: 'ix_ias_drg',
+                hat: 'ix_ias_hat',
+                off: 'ix_ias_off',
+                vio: 'ix_ias_vio',
+                /* Fraud keywords */
+                fr: 'ix_ias_fr',
+                /* Viewability keywords */
+                vw: 'ix_ias_vw'
             },
 
             /* The bid price unit (in cents) the endpoint returns, please refer to the readme for details */
             bidUnitInCents: 1,
             lineItemType: Constants.LineItemTypes.ID_AND_SIZE,
-            callbackType: Partner.CallbackTypes.ID,
-            architecture: Partner.Architectures.SRA,
-            requestType: Partner.RequestTypes.ANY
+            callbackType: Partner.CallbackTypes.NONE, // Callback type, please refer to the readme for details
+            architecture: Partner.Architectures.FSRA, // Request architecture, please refer to the readme for details
+            requestType: Partner.RequestTypes.AJAX // Request type, jsonp, ajax, or any.
         };
 
         /* --------------------------------------------------------------------------------------- */
@@ -453,6 +568,38 @@ function IntegralAdScienceNob(configs) {
         if (results) {
             throw Whoopsie('INVALID_CONFIG', results);
         }
+        //? }
+        /*
+         * Adjust the below bidTransformerConfigs variable to match the units the adapter
+         * sends bids in and to match line item setup. This configuration variable will
+         * be used to transform the bids going into DFP.
+         */
+
+        /* - Please fill out this bid trasnformer according to your module's bid response format - */
+        var bidTransformerConfigs = {
+            //? if (FEATURES.GPT_LINE_ITEMS) {
+            // IAS does not need to transform bids
+            //? }
+        };
+
+        /* --------------------------------------------------------------------------------------- */
+
+        if (configs.bidTransformer) {
+            //? if (FEATURES.GPT_LINE_ITEMS) {
+            bidTransformerConfigs.targeting = configs.bidTransformer;
+            //? }
+            //? if (FEATURES.RETURN_PRICE) {
+            bidTransformerConfigs.price.inputCentsMultiplier = configs.bidTransformer.inputCentsMultiplier;
+            //? }
+        }
+
+        __bidTransformers = {};
+
+        //? if (FEATURES.GPT_LINE_ITEMS) {
+        __bidTransformers.targeting = BidTransformer(bidTransformerConfigs.targeting);
+        //? }
+        //? if (FEATURES.RETURN_PRICE) {
+        __bidTransformers.price = BidTransformer(bidTransformerConfigs.price);
         //? }
 
         __baseClass = Partner(__profile, configs, null, {
@@ -489,9 +636,10 @@ function IntegralAdScienceNob(configs) {
          * ---------------------------------- */
 
         //? if (TEST) {
+        render: __render,
         parseResponse: __parseResponse,
         generateRequestObj: __generateRequestObj,
-        adResponseCallback: adResponseCallback
+        adResponseCallback: adResponseCallback,
         //? }
     };
 
